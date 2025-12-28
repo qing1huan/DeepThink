@@ -1,0 +1,274 @@
+"use client";
+
+import { useState, useMemo, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import {
+  Plus,
+  Trash2,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Brain,
+  GitBranch,
+  MessageSquare,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useCanvas } from "@/contexts/canvas-context";
+import { useViewMode } from "./app-shell";
+import { buildThreadTree, ThreadTreeNode } from "@/types/canvas";
+
+// Recursive component to render thread tree
+function ThreadItem({
+  node,
+  activeThreadId,
+  onSelect,
+  isCollapsed: sidebarCollapsed,
+}: {
+  node: ThreadTreeNode;
+  activeThreadId: string;
+  onSelect: (id: string) => void;
+  isCollapsed: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const hasChildren = node.children.length > 0;
+  const isActive = node.thread.id === activeThreadId;
+  const isRoot = node.depth === 0;
+
+  const handleClick = useCallback(() => {
+    onSelect(node.thread.id);
+  }, [onSelect, node.thread.id]);
+
+  const toggleExpand = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded((prev) => !prev);
+  }, []);
+
+  return (
+    <div className="w-full">
+      {/* Thread Item */}
+      <div
+        onClick={handleClick}
+        className={cn(
+          "flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors",
+          "hover:bg-slate-800/40",
+          isActive && "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/25",
+          !isActive && "text-slate-400"
+        )}
+        style={{ paddingLeft: sidebarCollapsed ? 8 : 8 + node.depth * 16 }}
+      >
+        {/* Expand/Collapse for nodes with children */}
+        {hasChildren && !sidebarCollapsed && (
+          <button
+            onClick={toggleExpand}
+            className="p-0.5 hover:bg-slate-700 rounded transition-colors"
+          >
+            {isExpanded ? (
+              <ChevronDown className="size-3" />
+            ) : (
+              <ChevronRight className="size-3" />
+            )}
+          </button>
+        )}
+
+        {/* Icon */}
+        {isRoot ? (
+          <Brain className={cn("size-3.5 flex-shrink-0", hasChildren && sidebarCollapsed && "ml-0")} />
+        ) : (
+          <GitBranch className="size-3.5 flex-shrink-0" />
+        )}
+
+        {/* Title - only show if not collapsed */}
+        {!sidebarCollapsed && (
+          <span className="truncate flex-1">{node.thread.title}</span>
+        )}
+
+        {/* Message count badge */}
+        {!sidebarCollapsed && (
+          <span className={cn(
+            "text-[10px] px-1.5 py-0.5 rounded-full",
+            isActive ? "bg-indigo-500/30 text-indigo-300" : "bg-slate-700 text-slate-500"
+          )}>
+            {node.thread.messages.length}
+          </span>
+        )}
+      </div>
+
+      {/* Children - only render if expanded and not collapsed sidebar */}
+      {hasChildren && isExpanded && !sidebarCollapsed && (
+        <div className="relative">
+          {/* Vertical line connecting children */}
+          <div 
+            className="absolute left-[19px] top-0 bottom-2 w-px bg-slate-700/50"
+            style={{ left: 11 + node.depth * 16 }}
+          />
+          {node.children.map((child) => (
+            <ThreadItem
+              key={child.thread.id}
+              node={child}
+              activeThreadId={activeThreadId}
+              onSelect={onSelect}
+              isCollapsed={sidebarCollapsed}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function Sidebar() {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { threads, clearAllData, activeThreadId, navigateToThread } = useCanvas();
+  const { setViewMode } = useViewMode();
+
+  const handleNewChat = () => {
+    if (confirm("Start a new conversation? This will clear all current threads.")) {
+      clearAllData();
+    }
+  };
+
+  const handleClearData = () => {
+    if (confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+      clearAllData();
+    }
+  };
+
+  // Build hierarchical tree from threads
+  const threadTree = useMemo(() => {
+    return buildThreadTree(threads);
+  }, [threads]);
+
+  // Handle thread selection - navigate to chat mode
+  const handleSelectThread = useCallback((id: string) => {
+    navigateToThread(id);
+    setViewMode("chat");
+  }, [navigateToThread, setViewMode]);
+
+  return (
+    <aside
+      className={cn(
+        "flex flex-col h-screen bg-slate-900 text-slate-50 transition-all duration-300 ease-in-out border-r border-slate-800",
+        isCollapsed ? "w-16" : "w-64"
+      )}
+    >
+      {/* Logo / Brand */}
+      <div className="flex items-center h-14 px-4 border-b border-slate-800">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="flex-shrink-0 flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+            <Brain className="size-5 text-white" />
+          </div>
+          {!isCollapsed && (
+            <div>
+              <span className="font-semibold text-lg tracking-tight whitespace-nowrap">
+                DeepThink
+              </span>
+              <span className="text-[10px] text-slate-500 ml-1">v4.2</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Navigation */}
+      <nav className="flex-1 flex flex-col py-4 px-2 overflow-y-auto scrollbar-thin">
+        <div className="space-y-1">
+          <Button
+            variant="ghost"
+            onClick={handleNewChat}
+            className={cn(
+              "w-full justify-start gap-3 text-slate-300 hover:text-slate-50 hover:bg-slate-800/60",
+              isCollapsed && "justify-center px-2"
+            )}
+          >
+            <Plus className="size-5" />
+            {!isCollapsed && <span className="truncate">New Canvas</span>}
+          </Button>
+        </div>
+
+        <Separator className="my-4 bg-slate-700/50" />
+
+        {/* Thread Tree */}
+        <div className="flex-1">
+          {!isCollapsed && (
+            <div className="flex items-center justify-between px-2 mb-2">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Threads
+              </p>
+              <span className="text-xs text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">
+                {threads.size}
+              </span>
+            </div>
+          )}
+          
+          <div className="space-y-0.5">
+            {threadTree.map((node) => (
+              <ThreadItem
+                key={node.thread.id}
+                node={node}
+                activeThreadId={activeThreadId}
+                onSelect={handleSelectThread}
+                isCollapsed={isCollapsed}
+              />
+            ))}
+          </div>
+
+          {threads.size === 0 && !isCollapsed && (
+            <div className="px-2 py-8 text-center">
+              <MessageSquare className="size-8 text-slate-700 mx-auto mb-2" />
+              <p className="text-xs text-slate-600">No threads yet</p>
+            </div>
+          )}
+        </div>
+      </nav>
+
+      {/* Bottom Actions */}
+      <div className="py-4 px-2 border-t border-slate-800">
+        <Button
+          variant="ghost"
+          onClick={handleClearData}
+          className={cn(
+            "w-full justify-start gap-3 text-slate-400 hover:text-red-400 hover:bg-red-500/10",
+            isCollapsed && "justify-center px-2"
+          )}
+        >
+          <Trash2 className="size-5" />
+          {!isCollapsed && <span className="truncate">Clear Data</span>}
+        </Button>
+
+        <Button
+          variant="ghost"
+          onClick={() => console.log("Settings")}
+          className={cn(
+            "w-full justify-start gap-3 text-slate-300 hover:text-slate-50 hover:bg-slate-800/60",
+            isCollapsed && "justify-center px-2"
+          )}
+        >
+          <Settings className="size-5" />
+          {!isCollapsed && <span className="truncate">Settings</span>}
+        </Button>
+
+        <Separator className="my-3 bg-slate-700/50" />
+
+        {/* Collapse Toggle */}
+        <Button
+          variant="ghost"
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          className={cn(
+            "w-full justify-center text-slate-400 hover:text-slate-50 hover:bg-slate-800/60"
+          )}
+        >
+          {isCollapsed ? (
+            <ChevronRight className="size-5" />
+          ) : (
+            <>
+              <ChevronLeft className="size-5" />
+              <span className="ml-2">Collapse</span>
+            </>
+          )}
+        </Button>
+      </div>
+    </aside>
+  );
+}
