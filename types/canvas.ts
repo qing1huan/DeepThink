@@ -34,7 +34,7 @@ export interface ThreadNodeData {
   isActive: boolean;
   onSetActive: (id: string) => void;
   onBranch: (threadId: string, messageId: string) => void;
-  onNavigateToChat: (id: string) => void;
+  onNavigateToChat?: (id: string) => void;
 }
 
 /**
@@ -52,7 +52,7 @@ export interface ThreadTreeNode {
 export function buildThreadTree(threads: Map<string, ThreadNode>): ThreadTreeNode[] {
   const threadArray = Array.from(threads.values());
   const childrenMap = new Map<string | null, ThreadNode[]>();
-  
+
   // Group threads by parentId
   threadArray.forEach(thread => {
     const parentId = thread.parentId;
@@ -61,7 +61,7 @@ export function buildThreadTree(threads: Map<string, ThreadNode>): ThreadTreeNod
     }
     childrenMap.get(parentId)!.push(thread);
   });
-  
+
   // Recursive function to build tree
   function buildNode(thread: ThreadNode, depth: number): ThreadTreeNode {
     const children = childrenMap.get(thread.id) || [];
@@ -73,7 +73,7 @@ export function buildThreadTree(threads: Map<string, ThreadNode>): ThreadTreeNod
       depth,
     };
   }
-  
+
   // Get root threads and build tree
   const rootThreads = childrenMap.get(null) || [];
   return rootThreads
@@ -112,7 +112,7 @@ export function createThread(
 ): ThreadNode {
   const id = generateThreadId();
   const now = Date.now();
-  
+
   return {
     id,
     messages: initialMessages,
@@ -131,15 +131,15 @@ export function generateThreadTitle(thread: ThreadNode): string {
   if (thread.messages.length === 0) {
     return thread.parentId ? "New Branch" : "New Conversation";
   }
-  
+
   const firstUserMessage = thread.messages.find(m => m.role === "user");
   if (firstUserMessage) {
     const title = firstUserMessage.content.substring(0, 40);
-    return title.length < firstUserMessage.content.length 
-      ? `${title}...` 
+    return title.length < firstUserMessage.content.length
+      ? `${title}...`
       : title;
   }
-  
+
   return thread.title;
 }
 
@@ -154,7 +154,7 @@ export function threadsToFlowElements(
 ): { nodes: Node<ThreadNodeData>[]; edges: Edge[] } {
   const nodes: Node<ThreadNodeData>[] = [];
   const edges: Edge[] = [];
-  
+
   threads.forEach((thread) => {
     nodes.push({
       id: thread.id,
@@ -167,7 +167,7 @@ export function threadsToFlowElements(
         onBranch,
       },
     });
-    
+
     // Create edge from parent to this thread
     if (thread.parentId) {
       edges.push({
@@ -175,24 +175,24 @@ export function threadsToFlowElements(
         source: thread.parentId,
         target: thread.id,
         animated: true,
-        style: { 
-          stroke: "#6366f1", 
+        style: {
+          stroke: "#6366f1",
           strokeWidth: 2,
         },
         label: "Branch",
-        labelStyle: { 
-          fontSize: 10, 
+        labelStyle: {
+          fontSize: 10,
           fontWeight: 500,
           fill: "#6366f1",
         },
-        labelBgStyle: { 
-          fill: "white", 
+        labelBgStyle: {
+          fill: "white",
           fillOpacity: 0.9,
         },
       });
     }
   });
-  
+
   return { nodes, edges };
 }
 

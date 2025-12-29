@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, KeyboardEvent, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Send, Loader2 } from "lucide-react";
+import { Send, Square } from "lucide-react";
 import { useCanvas } from "@/contexts/canvas-context";
 
 interface ChatInputProps {
@@ -19,14 +19,14 @@ export function ChatInput({
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { inputDraft, clearInputDraft } = useCanvas();
+  const { inputDraft, clearInputDraft, isLoading, stopGeneration } = useCanvas();
 
   // Watch for inputDraft changes and inject into textarea
   useEffect(() => {
     if (inputDraft && inputDraft.length > 0) {
       setValue(inputDraft);
       clearInputDraft();
-      
+
       // Focus the textarea and place cursor at the end
       if (textareaRef.current) {
         textareaRef.current.focus();
@@ -64,7 +64,8 @@ export function ChatInput({
   }, [value, disabled, onSend]);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    // Prevent sending during IME composition (e.g., Chinese input)
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -75,11 +76,12 @@ export function ChatInput({
       <div
         className={cn(
           "flex items-end gap-3 max-w-4xl mx-auto",
-          "p-3 rounded-2xl",
+          "p-3 rounded-xl",
           "bg-white dark:bg-slate-900",
           "border border-slate-200 dark:border-slate-700",
           "shadow-lg shadow-slate-200/50 dark:shadow-slate-900/50",
-          "focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/20",
+          // Focus-within: outer container lights up when textarea is focused
+          "focus-within:border-primary focus-within:ring-1 focus-within:ring-ring",
           "transition-all duration-200"
         )}
       >
@@ -92,10 +94,12 @@ export function ChatInput({
           disabled={disabled}
           rows={1}
           className={cn(
-            "flex-1 resize-none bg-transparent",
+            "flex-1 resize-none",
+            // Remove all borders, shadows, and focus rings from textarea itself
+            "border-0 shadow-none bg-transparent",
+            "focus:outline-none focus-visible:ring-0 focus-visible:ring-offset-0",
             "text-sm text-slate-800 dark:text-slate-100",
             "placeholder:text-slate-400 dark:placeholder:text-slate-500",
-            "focus:outline-none",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             "min-h-[24px] max-h-[200px]",
             "py-1.5 px-1"
@@ -103,19 +107,20 @@ export function ChatInput({
         />
 
         <Button
-          onClick={handleSend}
-          disabled={disabled || !value.trim()}
+          onClick={isLoading ? stopGeneration : handleSend}
+          disabled={!isLoading && (disabled || !value.trim())}
           size="icon"
           className={cn(
             "shrink-0 rounded-xl h-10 w-10",
-            "bg-gradient-to-br from-blue-500 to-indigo-600",
-            "hover:from-blue-600 hover:to-indigo-700",
+            isLoading
+              ? "bg-gradient-to-br from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700"
+              : "bg-gradient-to-br from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700",
             "disabled:from-slate-300 disabled:to-slate-400 disabled:opacity-50",
             "transition-all duration-200"
           )}
         >
-          {disabled ? (
-            <Loader2 className="size-4 animate-spin" />
+          {isLoading ? (
+            <Square className="size-4" />
           ) : (
             <Send className="size-4" />
           )}

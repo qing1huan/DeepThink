@@ -18,9 +18,18 @@ import {
   generateThreadId,
 } from "@/types/canvas";
 import { buildFlowElements } from "@/lib/canvas-utils";
+import {
+  Session,
+  createDefaultSession,
+  serializeSession,
+  deserializeSession,
+  SerializedSession,
+  generateSessionTitle,
+} from "@/types/session";
 
-// LocalStorage key (for backwards compatibility)
-const STORAGE_KEY = "deepthink-canvas-v1";
+// LocalStorage key - updated for multi-session
+const STORAGE_KEY = "deepthink-canvas-v2";
+const LEGACY_STORAGE_KEY = "deepthink-canvas-v1";
 
 // Database API helpers
 async function loadThreadsFromDB(): Promise<Map<string, ThreadNode>> {
@@ -196,7 +205,12 @@ Pretty cool, right? 🎉`,
 ];
 
 interface CanvasContextType {
-  // State
+  // Session management
+  sessions: Session[];
+  activeSessionId: string;
+  currentSession: Session | null;
+
+  // Current session state (derived)
   threads: Map<string, ThreadNode>;
   activeThreadId: string;
   nodes: Node<ThreadNodeData>[];
@@ -204,7 +218,13 @@ interface CanvasContextType {
   isLoading: boolean;
   inputDraft: string;
 
-  // Actions
+  // Session actions
+  createSession: () => void;
+  switchSession: (sessionId: string) => void;
+  deleteSession: (sessionId: string) => void;
+  renameSession: (sessionId: string, title: string) => void;
+
+  // Thread actions (within current session)
   setActiveThread: (id: string) => void;
   sendMessage: (content: string) => Promise<void>;
   createBranch: (parentId: string, contextMessageId: string) => void;
@@ -214,11 +234,13 @@ interface CanvasContextType {
     userQuery: string,
     selectedContext: string
   ) => Promise<void>;
+  deleteThread: (id: string) => void;
   clearAllData: () => void;
   navigateToThread: (id: string) => void;
   getParentThread: (id: string) => ThreadNode | null;
   setInputDraft: (text: string) => void;
   clearInputDraft: () => void;
+  stopGeneration: () => void;
 }
 
 const CanvasContext = createContext<CanvasContextType | undefined>(undefined);
@@ -231,19 +253,26 @@ export function useCanvas() {
   return context;
 }
 
-// Serialization helpers for Map
-interface StoredState {
+// Serialization helpers for multi-session storage
+interface StoredStateV2 {
+  sessions: SerializedSession[];
+  activeSessionId: string;
+  version: 2;
+}
+
+// Legacy format for migration
+interface StoredStateV1 {
   threads: [string, ThreadNode][];
   activeThreadId: string;
   version?: number;
 }
 
-function serializeState(threads: Map<string, ThreadNode>, activeThreadId: string): string {
+function serializeStateV2(sessions: Session[], activeSessionId: string): string {
   try {
-    const state: StoredState = {
-      threads: Array.from(threads.entries()),
-      activeThreadId,
-      version: 1,
+    const state: StoredStateV2 = {
+      sessions: sessions.map(serializeSession),
+      activeSessionId,
+      version: 2,
     };
     return JSON.stringify(state);
   } catch (error) {
@@ -252,21 +281,45 @@ function serializeState(threads: Map<string, ThreadNode>, activeThreadId: string
   }
 }
 
-function deserializeState(json: string): { threads: Map<string, ThreadNode>; activeThreadId: string } | null {
+function deserializeStateV2(json: string): { sessions: Session[]; activeSessionId: string } | null {
   try {
     if (!json || json.trim() === "") {
       return null;
     }
 
-    const state: StoredState = JSON.parse(json);
+    const parsed = JSON.parse(json);
 
-    // Validate the parsed data
-    if (!state || !Array.isArray(state.threads) || typeof state.activeThreadId !== "string") {
-      console.warn("Invalid stored state structure, resetting...");
+    // Check if it's v2 format
+    if (parsed.version === 2 && Array.isArray(parsed.sessions)) {
+      const sessions = parsed.sessions.map(deserializeSession);
+      const activeSessionId = parsed.activeSessionId || sessions[0]?.id || "";
+      return { sessions, activeSessionId };
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Failed to deserialize v2 state:", error);
+    return null;
+  }
+}
+
+/**
+ * Migrate legacy v1 format (flat threads) to v2 format (sessions)
+ */
+function migrateLegacyState(json: string): { sessions: Session[]; activeSessionId: string } | null {
+  try {
+    if (!json || json.trim() === "") {
       return null;
     }
 
-    // Validate each thread
+    const state: StoredStateV1 = JSON.parse(json);
+
+    // Validate legacy format
+    if (!state || !Array.isArray(state.threads)) {
+      return null;
+    }
+
+    // Convert threads to a session
     const validThreads: [string, ThreadNode][] = [];
     for (const [id, thread] of state.threads) {
       if (
@@ -280,27 +333,28 @@ function deserializeState(json: string): { threads: Map<string, ThreadNode>; act
     }
 
     if (validThreads.length === 0) {
-      console.warn("No valid threads found, resetting...");
       return null;
     }
 
     const threadsMap = new Map(validThreads);
 
-    // Ensure activeThreadId exists in threads
-    if (!threadsMap.has(state.activeThreadId)) {
-      const firstThreadId = validThreads[0][0];
-      return {
-        threads: threadsMap,
-        activeThreadId: firstThreadId,
-      };
-    }
+    // Create a session from the legacy data
+    const now = Date.now();
+    const legacySession: Session = {
+      id: `session_migrated_${now}`,
+      title: "Migrated Conversation",
+      createdAt: now,
+      updatedAt: now,
+      threads: threadsMap,
+      activeThreadId: state.activeThreadId || validThreads[0][0],
+    };
 
     return {
-      threads: threadsMap,
-      activeThreadId: state.activeThreadId,
+      sessions: [legacySession],
+      activeSessionId: legacySession.id,
     };
   } catch (error) {
-    console.error("Failed to deserialize state:", error);
+    console.error("Failed to migrate legacy state:", error);
     return null;
   }
 }
@@ -374,92 +428,348 @@ interface CanvasProviderProps {
 
 export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderProps) {
   const [isHydrated, setIsHydrated] = useState(false);
-  const [threads, setThreads] = useState<Map<string, ThreadNode>>(() => new Map());
-  const [activeThreadId, setActiveThreadId] = useState<string>("");
+
+  // Multi-session state
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string>("");
+
+  // UI state
   const [isLoading, setIsLoading] = useState(false);
   const [inputDraft, setInputDraftState] = useState<string>("");
   const mockIndexRef = useRef(0);
   const isInitializedRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Load from database on mount (then fallback to localStorage)
+  // Get current session (derived state)
+  const currentSession = useMemo(() => {
+    return sessions.find(s => s.id === activeSessionId) || null;
+  }, [sessions, activeSessionId]);
+
+  // Get threads and activeThreadId from current session (derived for backward compatibility)
+  const threads = useMemo(() => {
+    return currentSession?.threads || new Map<string, ThreadNode>();
+  }, [currentSession]);
+
+  const activeThreadId = useMemo(() => {
+    return currentSession?.activeThreadId || "";
+  }, [currentSession]);
+
+  // Helper to update current session
+  const updateCurrentSession = useCallback((updater: (session: Session) => Session) => {
+    setSessions(prev => prev.map(session =>
+      session.id === activeSessionId ? updater(session) : session
+    ));
+  }, [activeSessionId]);
+
+  // Helper to set threads in current session  
+  const setThreads = useCallback((updater: Map<string, ThreadNode> | ((prev: Map<string, ThreadNode>) => Map<string, ThreadNode>)) => {
+    updateCurrentSession(session => {
+      const newThreads = typeof updater === "function"
+        ? updater(session.threads)
+        : updater;
+      return {
+        ...session,
+        threads: newThreads,
+        updatedAt: Date.now(),
+      };
+    });
+  }, [updateCurrentSession]);
+
+  // Helper to set active thread in current session
+  const setActiveThreadIdInSession = useCallback((threadId: string) => {
+    updateCurrentSession(session => ({
+      ...session,
+      activeThreadId: threadId,
+    }));
+  }, [updateCurrentSession]);
+
+  // ==========================================
+  // Session CRUD Operations
+  // ==========================================
+
+  const createSession = useCallback(() => {
+    const newSession = createDefaultSession();
+    setSessions(prev => [...prev, newSession]);
+    setActiveSessionId(newSession.id);
+    onNavigateToChat?.();
+  }, [onNavigateToChat]);
+
+  const switchSession = useCallback((sessionId: string) => {
+    if (sessions.some(s => s.id === sessionId)) {
+      setActiveSessionId(sessionId);
+    }
+  }, [sessions]);
+
+  const deleteSession = useCallback((sessionId: string) => {
+    setSessions(prev => {
+      const updated = prev.filter(s => s.id !== sessionId);
+
+      // If we deleted the active session, switch to another
+      if (sessionId === activeSessionId && updated.length > 0) {
+        setActiveSessionId(updated[0].id);
+      } else if (updated.length === 0) {
+        // No sessions left, create a new one
+        const defaultSession = createDefaultSession();
+        setActiveSessionId(defaultSession.id);
+        return [defaultSession];
+      }
+
+      return updated;
+    });
+  }, [activeSessionId]);
+
+  const renameSession = useCallback((sessionId: string, title: string) => {
+    setSessions(prev => prev.map(session =>
+      session.id === sessionId
+        ? { ...session, title, updatedAt: Date.now() }
+        : session
+    ));
+  }, []);
+
+  // Stop generation function
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+    }
+  }, []);
+
+  /**
+   * Get ancestral context: collect all messages from ancestor threads (Root -> ... -> Parent)
+   * This enables "one-way context inheritance" where child threads know about their ancestors
+   * but ancestors don't know about their children.
+   * 
+   * @param threadId - The current thread ID to find ancestors for
+   * @param threadsMap - The threads map to search in
+   * @returns Array of messages in chronological order from root to immediate parent
+   */
+  const getAncestralContext = useCallback((
+    threadId: string,
+    threadsMap: Map<string, ThreadNode>
+  ): { role: "user" | "assistant"; content: string }[] => {
+    const ancestorMessages: { role: "user" | "assistant"; content: string }[] = [];
+    const ancestorChain: ThreadNode[] = [];
+
+    // Build the ancestor chain by walking up the tree
+    let currentThread = threadsMap.get(threadId);
+    while (currentThread?.parentId) {
+      const parentThread = threadsMap.get(currentThread.parentId);
+      if (parentThread) {
+        ancestorChain.unshift(parentThread); // Add to front to maintain root-first order
+        currentThread = parentThread;
+      } else {
+        break;
+      }
+    }
+
+    // Collect messages from each ancestor in order (root first)
+    for (const ancestorThread of ancestorChain) {
+      // Get the branch point: find where the child branched from
+      // For proper context, we include all messages up to and including the parentMessageId
+      const childThread = threadsMap.get(threadId);
+      let parentMessageId: string | null = null;
+
+      // Find if this ancestor is the direct parent
+      for (const [, thread] of threadsMap) {
+        if (thread.parentId === ancestorThread.id) {
+          // Check if this leads to our target thread
+          let checkThread: ThreadNode | undefined = thread;
+          while (checkThread) {
+            if (checkThread.id === threadId) {
+              parentMessageId = thread.parentMessageId;
+              break;
+            }
+            // Find child of current checkThread that leads to threadId
+            let found = false;
+            for (const [, t] of threadsMap) {
+              if (t.parentId === checkThread.id) {
+                checkThread = t;
+                found = true;
+                break;
+              }
+            }
+            if (!found) break;
+          }
+          if (parentMessageId) break;
+        }
+      }
+
+      // Collect messages from this ancestor
+      for (const message of ancestorThread.messages) {
+        // Skip branch welcome messages (they start with 🌿)
+        if (message.role === "assistant" && message.content.startsWith("🌿")) {
+          continue;
+        }
+
+        ancestorMessages.push({
+          role: message.role,
+          content: message.content,
+        });
+
+        // If this is the message where the branch was created, stop here for this ancestor
+        if (parentMessageId && message.id === parentMessageId) {
+          break;
+        }
+      }
+    }
+
+    return ancestorMessages;
+  }, []);
+
+  // Load sessions from localStorage on mount
   useEffect(() => {
     // Prevent double initialization in StrictMode
     if (isInitializedRef.current) return;
     isInitializedRef.current = true;
 
-    const initializeThreads = async () => {
-      // Try loading from database first
+    const initializeSessions = async () => {
+      // Try loading v2 format first
+      try {
+        const storedV2 = safeGetItem(STORAGE_KEY);
+        if (storedV2) {
+          const parsed = deserializeStateV2(storedV2);
+          if (parsed && parsed.sessions.length > 0) {
+            setSessions(parsed.sessions);
+            setActiveSessionId(parsed.activeSessionId);
+            setIsHydrated(true);
+            console.log(`Loaded ${parsed.sessions.length} sessions from storage (v2)`);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error loading v2 data:", error);
+      }
+
+      // Try migrating legacy v1 format
+      try {
+        const storedV1 = safeGetItem(LEGACY_STORAGE_KEY);
+        if (storedV1) {
+          const migrated = migrateLegacyState(storedV1);
+          if (migrated && migrated.sessions.length > 0) {
+            setSessions(migrated.sessions);
+            setActiveSessionId(migrated.activeSessionId);
+            setIsHydrated(true);
+            console.log("Migrated legacy data to v2 format");
+            // Remove legacy data after successful migration
+            safeRemoveItem(LEGACY_STORAGE_KEY);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error migrating legacy data:", error);
+      }
+
+      // Try loading from database (for users with DB data)
       try {
         const dbThreads = await loadThreadsFromDB();
         if (dbThreads.size > 0) {
-          setThreads(dbThreads);
-          // Set the first thread as active
-          const firstThreadId = Array.from(dbThreads.keys())[0];
-          setActiveThreadId(firstThreadId);
+          // Create a session from DB threads
+          const dbSession: Session = {
+            id: `session_db_${Date.now()}`,
+            title: "Database Conversation",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            threads: dbThreads,
+            activeThreadId: Array.from(dbThreads.keys())[0],
+          };
+          setSessions([dbSession]);
+          setActiveSessionId(dbSession.id);
           setIsHydrated(true);
           console.log(`Loaded ${dbThreads.size} threads from database`);
           return;
         }
       } catch (error) {
-        console.error("Failed to load from DB, trying localStorage:", error);
+        console.error("Failed to load from DB:", error);
       }
 
-      // Fallback to localStorage
-      try {
-        const stored = safeGetItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = deserializeState(stored);
-          if (parsed && parsed.threads.size > 0) {
-            setThreads(parsed.threads);
-            setActiveThreadId(parsed.activeThreadId);
-            setIsHydrated(true);
-            return;
-          }
-        }
-      } catch (error) {
-        console.error("Error loading stored data, resetting:", error);
-        safeRemoveItem(STORAGE_KEY);
-      }
-
-      // No data from DB or localStorage - create fresh state
-      const defaultState = createDefaultState();
-      setThreads(defaultState.threads);
-      setActiveThreadId(defaultState.activeThreadId);
+      // No data - create fresh state with default session
+      const defaultSession = createDefaultSession();
+      setSessions([defaultSession]);
+      setActiveSessionId(defaultSession.id);
       setIsHydrated(true);
     };
 
-    initializeThreads();
+    initializeSessions();
   }, []);
 
-  // Save to localStorage whenever threads or activeThreadId changes
+  // Save to localStorage whenever sessions change
   useEffect(() => {
-    if (!isHydrated || threads.size === 0) return;
+    if (!isHydrated || sessions.length === 0) return;
 
-    const serialized = serializeState(threads, activeThreadId);
+    const serialized = serializeStateV2(sessions, activeSessionId);
     if (serialized) {
       safeSetItem(STORAGE_KEY, serialized);
     }
-  }, [threads, activeThreadId, isHydrated]);
+  }, [sessions, activeSessionId, isHydrated]);
+
+  // Delete a thread and all its children
+  const deleteThread = useCallback((id: string) => {
+    setThreads(prev => {
+      const updated = new Map(prev);
+
+      // Collect all thread IDs to delete (the thread and its descendants)
+      const idsToDelete = new Set<string>();
+
+      function collectDescendants(threadId: string) {
+        idsToDelete.add(threadId);
+        // Find all threads that have this thread as parent
+        for (const [childId, thread] of updated) {
+          if (thread.parentId === threadId) {
+            collectDescendants(childId);
+          }
+        }
+      }
+
+      collectDescendants(id);
+
+      // Delete all collected threads
+      for (const deleteId of idsToDelete) {
+        updated.delete(deleteId);
+      }
+
+      return updated;
+    });
+
+    // If the deleted thread was active, switch to the first available
+    if (activeThreadId === id) {
+      setThreads(prev => {
+        const remaining = Array.from(prev.keys());
+        if (remaining.length > 0) {
+          setActiveThreadIdInSession(remaining[0]);
+        } else {
+          // No threads left, create a fresh state
+          const defaultState = createDefaultState();
+          setActiveThreadIdInSession(defaultState.activeThreadId);
+          return defaultState.threads;
+        }
+        return prev;
+      });
+    }
+
+    // Try to delete from DB (ignore errors since localStorage works)
+    fetch(`/api/threads/${id}`, { method: 'DELETE' }).catch(() => { });
+  }, [activeThreadId]);
 
   // Clear all data
   const clearAllData = useCallback(() => {
     safeRemoveItem(STORAGE_KEY);
     const defaultState = createDefaultState();
     setThreads(defaultState.threads);
-    setActiveThreadId(defaultState.activeThreadId);
+    setActiveThreadIdInSession(defaultState.activeThreadId);
   }, []);
 
   // Set active thread
   const setActiveThread = useCallback((id: string) => {
     if (threads.has(id)) {
-      setActiveThreadId(id);
+      setActiveThreadIdInSession(id);
     }
   }, [threads]);
 
   // Navigate to thread and switch to chat mode
   const navigateToThread = useCallback((id: string) => {
     if (threads.has(id)) {
-      setActiveThreadId(id);
+      setActiveThreadIdInSession(id);
       onNavigateToChat?.();
     }
   }, [threads, onNavigateToChat]);
@@ -518,7 +828,7 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
     });
 
     // Set the new branch as active
-    setActiveThreadId(newThread.id);
+    setActiveThreadIdInSession(newThread.id);
   }, [threads]);
 
   // Create a branch with an immediate user query (for selection menu actions)
@@ -563,14 +873,39 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
     });
 
     // Set the new branch as active and switch to chat
-    setActiveThreadId(newThread.id);
+    setActiveThreadIdInSession(newThread.id);
     onNavigateToChat?.();
 
     // Call real API
     setIsLoading(true);
 
-    // Prepare messages for API
-    const apiMessages = [{ role: "user" as const, content: formattedQuery }];
+    // Prepare messages for API with ancestral context
+    // Get messages from all ancestors of the parent thread
+    const ancestralMessages = getAncestralContext(parentId, threads);
+
+    // Get messages from parent thread up to and including the branch point
+    const parentMessages: { role: "user" | "assistant"; content: string }[] = [];
+    for (const message of parentThread.messages) {
+      // Skip branch welcome messages
+      if (message.role === "assistant" && message.content.startsWith("🌿")) {
+        continue;
+      }
+      parentMessages.push({
+        role: message.role,
+        content: message.content,
+      });
+      // Stop at the message where this branch was created
+      if (message.id === contextMessageId) {
+        break;
+      }
+    }
+
+    // Combine: ancestral context + parent messages up to branch point + new user message
+    const apiMessages = [
+      ...ancestralMessages,
+      ...parentMessages,
+      { role: "user" as const, content: formattedQuery },
+    ];
 
     // Create placeholder assistant message for streaming
     const assistantMessageId = generateMessageId();
@@ -687,7 +1022,7 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
     }
 
     setIsLoading(false);
-  }, [threads, onNavigateToChat]);
+  }, [threads, onNavigateToChat, getAncestralContext]);
 
   // Send message to active thread
   const sendMessage = useCallback(async (content: string) => {
@@ -720,15 +1055,31 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
 
     setIsLoading(true);
 
-    // Prepare messages for API
+    // Create AbortController for this request
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
+    // Prepare messages for API with ancestral context
+    // This enables "one-way context inheritance" - child threads know about ancestors
     const currentThread = threads.get(activeThreadId);
+
+    // Get messages from all ancestor threads (Root -> ... -> Parent)
+    const ancestralMessages = getAncestralContext(activeThreadId, threads);
+
+    // Get messages from current thread (excluding branch welcome messages)
+    const currentThreadMessages = (currentThread?.messages || [])
+      .filter(m => !(m.role === "assistant" && m.content.startsWith("🌿")))
+      .map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+    // Combine: ancestral context + current thread messages + new user message
     const allMessages = [
-      ...(currentThread?.messages || []),
-      userMessage,
-    ].map(m => ({
-      role: m.role,
-      content: m.content,
-    }));
+      ...ancestralMessages,
+      ...currentThreadMessages,
+      { role: userMessage.role, content: userMessage.content },
+    ];
 
     // Create placeholder assistant message for streaming
     const assistantMessageId = generateMessageId();
@@ -741,6 +1092,7 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ messages: allMessages }),
+        signal,
       });
 
       if (!response.ok) {
@@ -823,6 +1175,16 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
       ).catch(err => console.error("Failed to save assistant message:", err));
 
     } catch (error) {
+      // Check if this was an abort (user stopped generation)
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Generation stopped by user');
+        // Keep already streamed content - don't use mock response
+        // The partial content is already in the thread from streaming updates
+        abortControllerRef.current = null;
+        setIsLoading(false);
+        return;
+      }
+
       console.error("API call failed, using mock response:", error);
 
       // Fallback to mock response
@@ -866,8 +1228,9 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
       saveMessageToDB(activeThreadId, "assistant", parsedContent, thoughts).catch(() => { });
     }
 
+    abortControllerRef.current = null;
     setIsLoading(false);
-  }, [threads, activeThreadId]);
+  }, [threads, activeThreadId, getAncestralContext]);
 
   // Build React Flow elements
   const { nodes, edges } = useMemo(() => {
@@ -878,42 +1241,81 @@ export function CanvasProvider({ children, onNavigateToChat }: CanvasProviderPro
   }, [threads, activeThreadId, setActiveThread, createBranch, navigateToThread, isHydrated]);
 
   const value: CanvasContextType = useMemo(() => ({
+    // Session management
+    sessions,
+    activeSessionId,
+    currentSession,
+
+    // Current session state (derived)
     threads,
     activeThreadId,
     nodes,
     edges,
     isLoading,
     inputDraft,
+
+    // Session actions
+    createSession,
+    switchSession,
+    deleteSession,
+    renameSession,
+
+    // Thread actions
     setActiveThread,
     sendMessage,
     createBranch,
     createBranchWithQuery,
+    deleteThread,
     clearAllData,
     navigateToThread,
     getParentThread,
     setInputDraft,
     clearInputDraft,
-  }), [threads, activeThreadId, nodes, edges, isLoading, inputDraft, setActiveThread, sendMessage, createBranch, createBranchWithQuery, clearAllData, navigateToThread, getParentThread, setInputDraft, clearInputDraft]);
+    stopGeneration,
+  }), [
+    sessions, activeSessionId, currentSession,
+    threads, activeThreadId, nodes, edges, isLoading, inputDraft,
+    createSession, switchSession, deleteSession, renameSession,
+    setActiveThread, sendMessage, createBranch, createBranchWithQuery,
+    deleteThread, clearAllData, navigateToThread, getParentThread,
+    setInputDraft, clearInputDraft, stopGeneration
+  ]);
 
   // Show loading state during hydration
   if (!isHydrated) {
     return (
       <CanvasContext.Provider value={{
+        // Session management
+        sessions: [],
+        activeSessionId: "",
+        currentSession: null,
+
+        // Current session state
         threads: new Map(),
         activeThreadId: "",
         nodes: [],
         edges: [],
         isLoading: false,
         inputDraft: "",
+
+        // Session actions
+        createSession: () => { },
+        switchSession: () => { },
+        deleteSession: () => { },
+        renameSession: () => { },
+
+        // Thread actions
         setActiveThread: () => { },
         sendMessage: async () => { },
         createBranch: () => { },
         createBranchWithQuery: async () => { },
+        deleteThread: () => { },
         clearAllData: () => { },
         navigateToThread: () => { },
         getParentThread: () => null,
         setInputDraft: () => { },
         clearInputDraft: () => { },
+        stopGeneration: () => { },
       }}>
         <div className="flex items-center justify-center h-full">
           <div className="flex items-center gap-3 text-slate-500">

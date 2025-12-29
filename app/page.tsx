@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Brain, MessageSquare, GitBranch, Sparkles, ArrowRight, ChevronLeft, Map } from "lucide-react";
-import { MessageBubble, ChatInput, SelectionMenu, formatQuoteForInput, BRANCH_PROMPTS, BranchAction } from "@/components/chat";
+import { Brain, MessageSquare, GitBranch, Sparkles, ArrowRight, Map } from "lucide-react";
+import { formatQuoteForInput, BRANCH_PROMPTS, BranchAction, ThreadColumn, SplitChatLayout } from "@/components/chat";
 import { CanvasView } from "@/components/graph";
 import { useViewMode } from "@/components/layout";
 import { useCanvas } from "@/contexts/canvas-context";
-import { Message, parseR1Response, generateMessageId } from "@/types/chat";
+
 
 function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
   return (
@@ -81,34 +81,37 @@ function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
 }
 
 function ChatModeView() {
-  const { threads, activeThreadId, isLoading, sendMessage, getParentThread, navigateToThread, setInputDraft, createBranchWithQuery } = useCanvas();
+  const { threads, activeThreadId, isLoading, sendMessage, getParentThread, navigateToThread, setInputDraft, createBranchWithQuery, setActiveThread } = useCanvas();
   const { setViewMode } = useViewMode();
   const activeThread = threads.get(activeThreadId);
   const parentThread = getParentThread(activeThreadId);
-  const messages = activeThread?.messages || [];
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  // Determine if we're in split mode (has parent thread)
+  const isSplitMode = !!parentThread;
 
   const handleSend = async (content: string) => {
     await sendMessage(content);
   };
 
-  const handleBackToParent = useCallback(() => {
-    if (parentThread) {
-      navigateToThread(parentThread.id);
-    }
-  }, [parentThread, navigateToThread]);
-
   const handleOpenCanvas = useCallback(() => {
     setViewMode("graph");
   }, [setViewMode]);
 
-  // Handle branch actions - creates new node immediately
-  const handleBranchAction = useCallback(async (
+  // Handle sending to a SPECIFIC thread (for split mode)
+  // This switches to the target thread first, then sends the message
+  const handleSendToThread = useCallback(async (threadId: string, content: string) => {
+    // Switch to the target thread first
+    setActiveThread(threadId);
+    // Then send the message (sendMessage uses activeThreadId internally)
+    // Note: We use setTimeout to ensure state update propagates
+    setTimeout(async () => {
+      await sendMessage(content);
+    }, 0);
+  }, [setActiveThread, sendMessage]);
+
+  // Handle branch with EXPLICIT source thread ID
+  const handleBranchFromThread = useCallback(async (
+    sourceThreadId: string,
     action: BranchAction,
     selectedText: string,
     sourceMessageId?: string,
@@ -122,14 +125,24 @@ function ChatModeView() {
       query = BRANCH_PROMPTS[action as keyof typeof BRANCH_PROMPTS] || "";
     }
 
-    // Create branch with the query
+    // Create branch with the EXPLICIT source thread ID as parent
     await createBranchWithQuery(
-      activeThreadId,
+      sourceThreadId,  // Use the explicit source thread, not global activeThreadId
       sourceMessageId || "",
       query,
       selectedText
     );
-  }, [activeThreadId, createBranchWithQuery]);
+  }, [createBranchWithQuery]);
+
+  // Handle branch actions (for single column mode) - uses activeThreadId
+  const handleBranchAction = useCallback(async (
+    action: BranchAction,
+    selectedText: string,
+    sourceMessageId?: string,
+    customQuery?: string
+  ) => {
+    await handleBranchFromThread(activeThreadId, action, selectedText, sourceMessageId, customQuery);
+  }, [activeThreadId, handleBranchFromThread]);
 
   // Handle quote action - fills current input
   const handleQuoteAction = useCallback((selectedText: string) => {
@@ -137,108 +150,84 @@ function ChatModeView() {
     setInputDraft(formattedQuote);
   }, [setInputDraft]);
 
-  return (
-    <div className="flex flex-col h-full">
-      {/* Thread Info Header with Navigation */}
-      <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex items-center justify-between">
+  // Common header component
+  const Header = () => (
+    <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {/* Thread Info */}
           <div className="flex items-center gap-2">
-            {/* Back to Parent Button - only show for branches */}
-            {parentThread && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleBackToParent}
-                className="h-7 px-2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              >
-                <ChevronLeft className="size-4 mr-1" />
-                <span className="text-xs">Back to &quot;{parentThread.title}&quot;</span>
-              </Button>
-            )}
-
-            {/* Thread Info */}
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center">
-                {activeThread?.parentId ? (
-                  <GitBranch className="size-3.5 text-indigo-600" />
-                ) : (
-                  <MessageSquare className="size-3.5 text-indigo-600" />
-                )}
-              </div>
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                {activeThread?.title || "Main Thread"}
-              </span>
-              <span className="text-xs text-slate-400">
-                · {messages.length} messages
-              </span>
-              {activeThread?.parentId && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                  Branch
-                </span>
+            <div className="w-6 h-6 rounded-md bg-indigo-500/10 flex items-center justify-center">
+              {activeThread?.parentId ? (
+                <GitBranch className="size-3.5 text-indigo-600" />
+              ) : (
+                <MessageSquare className="size-3.5 text-indigo-600" />
               )}
             </div>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              {activeThread?.title || "Main Thread"}
+            </span>
+            {activeThread?.parentId && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
+                Branch
+              </span>
+            )}
           </div>
+        </div>
 
-          {/* Open Canvas Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleOpenCanvas}
-            className="h-7 px-2.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-          >
-            <Map className="size-3.5 mr-1.5" />
-            <span className="text-xs">View Canvas</span>
-          </Button>
+        {/* Open Canvas Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleOpenCanvas}
+          className="h-7 px-2.5 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+        >
+          <Map className="size-3.5 mr-1.5" />
+          <span className="text-xs">View Canvas</span>
+        </Button>
+      </div>
+    </div>
+  );
+
+  // Single node mode: centered layout
+  if (!isSplitMode) {
+    return (
+      <div className="flex flex-col h-full">
+        <Header />
+        <div className="flex h-full">
+          <div className="w-full max-w-4xl mx-auto transition-all duration-500 ease-in-out">
+            {activeThread && (
+              <ThreadColumn
+                thread={activeThread}
+                isActive={true}
+                onBranchAction={handleBranchAction}
+                onQuoteAction={handleQuoteAction}
+                onSend={handleSend}
+                isLoading={isLoading}
+              />
+            )}
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Messages List - with Selection Menu */}
-      <div
-        ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin relative"
-      >
-        {/* Selection Menu - appears on text selection */}
-        <SelectionMenu
-          containerRef={messagesContainerRef}
-          onBranchAction={handleBranchAction}
+  // Split mode: Focus-driven layout with SplitChatLayout
+  if (!activeThread) return null;
+
+  return (
+    <div className="flex flex-col h-full">
+      <Header />
+      <div className="flex-1 min-h-0">
+        <SplitChatLayout
+          parentThread={parentThread}
+          activeThread={activeThread}
+          isLoading={isLoading}
+          onSendToThread={handleSendToThread}
+          onBranchFromThread={handleBranchFromThread}
           onQuoteAction={handleQuoteAction}
         />
-
-        {messages.map((message) => (
-          <div key={message.id} data-message-id={message.id}>
-            <MessageBubble message={message} />
-          </div>
-        ))}
-
-        {/* Loading indicator */}
-        {isLoading && (
-          <div className="flex gap-3 max-w-4xl mr-auto">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <Brain className="size-4 text-white animate-pulse" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-medium text-slate-500 mb-1">
-                DeepThink AI
-              </span>
-              <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1">
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                  <span className="text-sm text-slate-500">Thinking...</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
       </div>
-
-      {/* Chat Input */}
-      <ChatInput onSend={handleSend} disabled={isLoading} />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import ReactFlow, {
   ReactFlowProvider,
   useReactFlow,
   Panel,
+  PanOnScrollMode,
 } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -43,7 +44,7 @@ function CanvasFlowInner() {
     const nodeCount = nodes.length;
     const wasNewNodeAdded = nodeCount > prevNodeCountRef.current;
     const activeChanged = activeThreadId !== prevActiveThreadRef.current;
-    
+
     // If a new node was added (branching), focus on the new active node
     if (wasNewNodeAdded && activeChanged) {
       const timer = setTimeout(() => {
@@ -57,17 +58,17 @@ function CanvasFlowInner() {
           );
         }
       }, 150);
-      
+
       prevNodeCountRef.current = nodeCount;
       prevActiveThreadRef.current = activeThreadId;
       return () => clearTimeout(timer);
     }
-    
+
     // Just active thread changed (clicking on different node)
     if (activeChanged && !wasNewNodeAdded) {
       prevActiveThreadRef.current = activeThreadId;
     }
-    
+
     prevNodeCountRef.current = nodeCount;
   }, [nodes.length, activeThreadId, getNode, setCenter]);
 
@@ -103,7 +104,7 @@ function CanvasFlowInner() {
           nodesConnectable={false}
           elementsSelectable={true}
           panOnScroll={true}
-          panOnScrollMode="free"
+          panOnScrollMode={PanOnScrollMode.Free}
           zoomOnScroll={true}
           zoomOnPinch={true}
           selectNodesOnDrag={false}
@@ -116,7 +117,7 @@ function CanvasFlowInner() {
             color="#cbd5e1"
             className="dark:opacity-30"
           />
-          
+
           {/* Secondary grid for depth */}
           <Background
             id="grid"
@@ -126,7 +127,7 @@ function CanvasFlowInner() {
             color="#e2e8f0"
             className="dark:opacity-10"
           />
-          
+
           {/* Controls - Bottom Right */}
           <Controls
             className="!bg-white/90 dark:!bg-slate-800/90 !border-slate-200 dark:!border-slate-700 !rounded-xl !shadow-xl backdrop-blur-sm"
@@ -135,7 +136,7 @@ function CanvasFlowInner() {
             showInteractive={false}
             position="bottom-right"
           />
-          
+
           {/* MiniMap - Top Right */}
           <MiniMap
             nodeColor={(node) => {
@@ -184,8 +185,8 @@ function CanvasFlowInner() {
       </div>
 
       {/* Chat Input - Fixed at bottom */}
-      <ChatInput 
-        onSend={handleSendMessage} 
+      <ChatInput
+        onSend={handleSendMessage}
         disabled={isLoading}
         placeholder="Continue the active thread... (Enter to send)"
       />

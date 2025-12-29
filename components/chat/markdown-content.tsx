@@ -13,10 +13,10 @@ interface MarkdownContentProps {
   variant?: "default" | "user" | "compact";
 }
 
-function MarkdownContentComponent({ 
-  content, 
+function MarkdownContentComponent({
+  content,
   className,
-  variant = "default" 
+  variant = "default"
 }: MarkdownContentProps) {
   return (
     <div
@@ -41,12 +41,12 @@ function MarkdownContentComponent({
           h3: ({ children }) => (
             <h3 className="text-base font-semibold mt-3 mb-1 first:mt-0">{children}</h3>
           ),
-          
+
           // Paragraphs
           p: ({ children }) => (
             <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>
           ),
-          
+
           // Lists
           ul: ({ children }) => (
             <ul className="list-disc list-inside mb-2 space-y-1 ml-1">{children}</ul>
@@ -57,18 +57,18 @@ function MarkdownContentComponent({
           li: ({ children }) => (
             <li className="leading-relaxed">{children}</li>
           ),
-          
+
           // Code
           code: ({ className: codeClassName, children, ...props }) => {
             const isInline = !codeClassName;
-            
+
             if (isInline) {
               return (
-                <code 
+                <code
                   className={cn(
                     "px-1.5 py-0.5 rounded text-[13px] font-mono",
-                    variant === "user" 
-                      ? "bg-white/20 text-white" 
+                    variant === "user"
+                      ? "bg-white/20 text-white"
                       : "bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200"
                   )}
                   {...props}
@@ -77,14 +77,14 @@ function MarkdownContentComponent({
                 </code>
               );
             }
-            
+
             return (
               <code className={cn(codeClassName, "text-[13px]")} {...props}>
                 {children}
               </code>
             );
           },
-          
+
           // Code blocks
           pre: ({ children }) => (
             <pre className={cn(
@@ -96,22 +96,22 @@ function MarkdownContentComponent({
               {children}
             </pre>
           ),
-          
-          // Blockquotes
+
+          // Blockquotes - styled as hint/note blocks
           blockquote: ({ children }) => (
             <blockquote className={cn(
-              "border-l-3 pl-3 my-2 italic",
+              "border-l-4 pl-4 pr-3 py-2 my-3 rounded-r-lg",
               variant === "user"
-                ? "border-white/40 text-white/80"
-                : "border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400"
+                ? "border-white/50 bg-white/10 text-white/90"
+                : "border-indigo-400 dark:border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 text-slate-700 dark:text-slate-300"
             )}>
               {children}
             </blockquote>
           ),
-          
+
           // Links
           a: ({ href, children }) => (
-            <a 
+            <a
               href={href}
               target="_blank"
               rel="noopener noreferrer"
@@ -125,7 +125,7 @@ function MarkdownContentComponent({
               {children}
             </a>
           ),
-          
+
           // Strong & Emphasis
           strong: ({ children }) => (
             <strong className="font-semibold">{children}</strong>
@@ -133,7 +133,7 @@ function MarkdownContentComponent({
           em: ({ children }) => (
             <em className="italic">{children}</em>
           ),
-          
+
           // Horizontal Rule
           hr: () => (
             <hr className={cn(
@@ -143,7 +143,7 @@ function MarkdownContentComponent({
                 : "border-slate-200 dark:border-slate-700"
             )} />
           ),
-          
+
           // Tables
           table: ({ children }) => (
             <div className="overflow-x-auto my-2">

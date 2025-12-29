@@ -11,7 +11,7 @@ import { ThoughtProcess } from "@/components/chat/thought-process";
 function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
   const { thread, isActive, onSetActive, onBranch, onNavigateToChat } = data;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollContainerRef.current && isActive) {
@@ -23,7 +23,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
   const handleNodeClick = useCallback(() => {
     if (isActive) {
       // Already active, navigate to chat
-      onNavigateToChat(thread.id);
+      onNavigateToChat?.(thread.id);
     } else {
       // Set as active first
       onSetActive(thread.id);
@@ -32,7 +32,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
 
   // Double click always navigates to chat
   const handleDoubleClick = useCallback(() => {
-    onNavigateToChat(thread.id);
+    onNavigateToChat?.(thread.id);
   }, [onNavigateToChat, thread.id]);
 
   const handleBranch = useCallback((e: React.MouseEvent, messageId: string) => {
@@ -58,8 +58,8 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
         "bg-white dark:bg-slate-900",
         "border-2 transition-all duration-200",
         "shadow-xl",
-        isActive 
-          ? "border-indigo-500 ring-4 ring-indigo-500/20 shadow-indigo-500/20" 
+        isActive
+          ? "border-indigo-500 ring-4 ring-indigo-500/20 shadow-indigo-500/20"
           : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600",
         selected && !isActive && "ring-2 ring-blue-400"
       )}
@@ -74,8 +74,8 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
       {/* Thread Header - nodrag to allow text selection */}
       <div className={cn(
         "px-4 py-3 border-b nodrag",
-        isActive 
-          ? "bg-gradient-to-r from-indigo-500 to-purple-500 border-transparent" 
+        isActive
+          ? "bg-gradient-to-r from-indigo-500 to-purple-500 border-transparent"
           : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"
       )}>
         <div className="flex items-center justify-between">
@@ -104,7 +104,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2">
             {isActive && (
               <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-white/20 text-white text-xs font-medium">
@@ -117,12 +117,12 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                onNavigateToChat(thread.id);
+                onNavigateToChat?.(thread.id);
               }}
               className={cn(
                 "h-7 px-2 text-xs",
-                isActive 
-                  ? "text-white hover:bg-white/20" 
+                isActive
+                  ? "text-white hover:bg-white/20"
                   : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
               )}
               title="Open in Chat Mode"
@@ -135,7 +135,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
       </div>
 
       {/* Messages Container - nopan & nowheel to prevent canvas interactions */}
-      <div 
+      <div
         ref={scrollContainerRef}
         onWheel={handleWheel}
         className={cn(
@@ -170,26 +170,26 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
                   {/* Role Label */}
                   <p className={cn(
                     "text-[10px] font-medium mb-1 select-none",
-                    message.role === "user" 
-                      ? "text-white/70" 
+                    message.role === "user"
+                      ? "text-white/70"
                       : "text-slate-500 dark:text-slate-400"
                   )}>
                     {message.role === "user" ? "You" : "AI"}
                   </p>
-                  
+
                   {/* Thought Process (collapsed in node view) */}
                   {message.role === "assistant" && message.thoughts && (
                     <div className="mb-2">
                       <ThoughtProcess thoughts={message.thoughts} className="!mb-0" />
                     </div>
                   )}
-                  
+
                   {/* Content - selectable text */}
                   <p className="text-xs leading-relaxed line-clamp-6 select-text cursor-text">
                     {message.content}
                   </p>
                 </div>
-                
+
                 {/* Branch Button - Only for assistant messages, visible on hover */}
                 {message.role === "assistant" && (
                   <Button

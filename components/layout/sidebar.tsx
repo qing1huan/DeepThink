@@ -17,6 +17,17 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCanvas } from "@/contexts/canvas-context";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useViewMode } from "./app-shell";
 import { buildThreadTree, ThreadTreeNode } from "@/types/canvas";
 
@@ -25,11 +36,13 @@ function ThreadItem({
   node,
   activeThreadId,
   onSelect,
+  onDelete,
   isCollapsed: sidebarCollapsed,
 }: {
   node: ThreadTreeNode;
   activeThreadId: string;
   onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
   isCollapsed: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -46,8 +59,12 @@ function ThreadItem({
     setIsExpanded((prev) => !prev);
   }, []);
 
+  const handleDelete = useCallback(() => {
+    onDelete(node.thread.id);
+  }, [onDelete, node.thread.id]);
+
   return (
-    <div className="w-full">
+    <div className="w-full group">
       {/* Thread Item */}
       <div
         onClick={handleClick}
@@ -94,13 +111,46 @@ function ThreadItem({
             {node.thread.messages.length}
           </span>
         )}
+
+        {/* Delete button with AlertDialog */}
+        {!sidebarCollapsed && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-opacity"
+              >
+                <Trash2 className="size-3 text-red-400" />
+              </button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="bg-slate-900 border-slate-700">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-slate-100">删除此会话？</AlertDialogTitle>
+                <AlertDialogDescription className="text-slate-400">
+                  此操作将永久删除该会话及其所有消息，无法恢复。
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-slate-100">
+                  取消
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  className="bg-red-600 text-white hover:bg-red-700"
+                >
+                  确定删除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       {/* Children - only render if expanded and not collapsed sidebar */}
       {hasChildren && isExpanded && !sidebarCollapsed && (
         <div className="relative">
           {/* Vertical line connecting children */}
-          <div 
+          <div
             className="absolute left-[19px] top-0 bottom-2 w-px bg-slate-700/50"
             style={{ left: 11 + node.depth * 16 }}
           />
@@ -110,6 +160,7 @@ function ThreadItem({
               node={child}
               activeThreadId={activeThreadId}
               onSelect={onSelect}
+              onDelete={onDelete}
               isCollapsed={sidebarCollapsed}
             />
           ))}
@@ -119,15 +170,27 @@ function ThreadItem({
   );
 }
 
+
 export function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const { threads, clearAllData, activeThreadId, navigateToThread } = useCanvas();
+  const {
+    sessions,
+    activeSessionId,
+    threads,
+    activeThreadId,
+    createSession,
+    switchSession,
+    deleteSession: deleteSessionAction,
+    navigateToThread,
+    deleteThread,
+    clearAllData
+  } = useCanvas();
   const { setViewMode } = useViewMode();
 
+  // Create new session (no longer clears data)
   const handleNewChat = () => {
-    if (confirm("Start a new conversation? This will clear all current threads.")) {
-      clearAllData();
-    }
+    createSession();
+    setViewMode("chat");
   };
 
   const handleClearData = () => {
@@ -135,6 +198,17 @@ export function Sidebar() {
       clearAllData();
     }
   };
+
+  // Handle session selection
+  const handleSelectSession = useCallback((sessionId: string) => {
+    switchSession(sessionId);
+    setViewMode("chat");
+  }, [switchSession, setViewMode]);
+
+  // Handle session deletion
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    deleteSessionAction(sessionId);
+  }, [deleteSessionAction]);
 
   // Build hierarchical tree from threads
   const threadTree = useMemo(() => {
@@ -146,6 +220,11 @@ export function Sidebar() {
     navigateToThread(id);
     setViewMode("chat");
   }, [navigateToThread, setViewMode]);
+
+  // Handle thread deletion
+  const handleDeleteThread = useCallback((id: string) => {
+    deleteThread(id);
+  }, [deleteThread]);
 
   return (
     <aside
@@ -189,6 +268,71 @@ export function Sidebar() {
 
         <Separator className="my-4 bg-slate-700/50" />
 
+        {/* Session List */}
+        {!isCollapsed && sessions.length > 1 && (
+          <div className="mb-4">
+            <div className="flex items-center justify-between px-2 mb-2">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                Sessions
+              </p>
+              <span className="text-xs text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">
+                {sessions.length}
+              </span>
+            </div>
+
+            <div className="space-y-0.5">
+              {sessions.map((session) => (
+                <div
+                  key={session.id}
+                  onClick={() => handleSelectSession(session.id)}
+                  className={cn(
+                    "group flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors",
+                    "hover:bg-slate-800/40",
+                    session.id === activeSessionId && "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/25",
+                    session.id !== activeSessionId && "text-slate-400"
+                  )}
+                >
+                  <Brain className="size-3.5 flex-shrink-0" />
+                  <span className="truncate flex-1">{session.title}</span>
+
+                  {/* Delete button */}
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-opacity"
+                      >
+                        <Trash2 className="size-3 text-red-400" />
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent className="bg-slate-900 border-slate-700">
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="text-slate-100">删除此会话？</AlertDialogTitle>
+                        <AlertDialogDescription className="text-slate-400">
+                          此操作将永久删除该会话及其所有对话，无法恢复。
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-slate-100">
+                          取消
+                        </AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDeleteSession(session.id)}
+                          className="bg-red-600 text-white hover:bg-red-700"
+                        >
+                          确定删除
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              ))}
+            </div>
+
+            <Separator className="my-4 bg-slate-700/50" />
+          </div>
+        )}
+
         {/* Thread Tree */}
         <div className="flex-1">
           {!isCollapsed && (
@@ -201,7 +345,7 @@ export function Sidebar() {
               </span>
             </div>
           )}
-          
+
           <div className="space-y-0.5">
             {threadTree.map((node) => (
               <ThreadItem
@@ -209,6 +353,7 @@ export function Sidebar() {
                 node={node}
                 activeThreadId={activeThreadId}
                 onSelect={handleSelectThread}
+                onDelete={handleDeleteThread}
                 isCollapsed={isCollapsed}
               />
             ))}
