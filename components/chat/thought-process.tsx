@@ -38,7 +38,7 @@ export function ThoughtProcess({ thoughts, className }: ThoughtProcessProps) {
           )}
         >
           <Brain className="size-3.5" />
-          <span>Thought Process</span>
+          <span>思考过程</span>
           {isOpen ? (
             <ChevronDown className="size-3.5 ml-1" />
           ) : (
@@ -46,7 +46,7 @@ export function ThoughtProcess({ thoughts, className }: ThoughtProcessProps) {
           )}
         </Button>
       </CollapsibleTrigger>
-      
+
       <CollapsibleContent className="mt-2 animate-in slide-in-from-top-2 duration-200">
         <div
           className={cn(

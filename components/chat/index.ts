@@ -6,3 +6,4 @@ export { SelectionMenu, formatQuoteForInput, BRANCH_PROMPTS } from "./selection-
 export type { BranchAction } from "./selection-menu";
 export { ThreadColumn } from "./thread-column";
 export { SplitChatLayout } from "./split-chat-layout";
+export { ThreadBreadcrumbs } from "./thread-breadcrumbs";

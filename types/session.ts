@@ -46,8 +46,8 @@ function createSessionWelcomeThread(): ThreadNode {
     const welcomeMessage: Message = {
         id: generateMessageId(),
         role: "assistant",
-        content: "Welcome to **DeepThink Canvas**! 🎨\n\nThis is your main conversation thread. Type a message below to start chatting. You can branch from any of my responses to explore different conversation paths.\n\n**Features:**\n- 📝 Markdown rendering with **bold**, *italic*, and `code`\n- 💻 Syntax-highlighted code blocks\n- 📐 LaTeX math: $E = mc^2$\n- 🌿 Branch conversations to explore alternatives",
-        thoughts: "User has just opened the Canvas. I should provide a welcoming message that explains the branching feature and showcases the Markdown capabilities.",
+        content: "欢迎使用 **DeepThink 画布**！🎨\n\n这是您的主会话。在下方输入消息即可开始聊天。您可以从我的任意回复中创建分支，探索不同的对话路径。\n\n**功能特性：**\n- 📝 支持 Markdown 渲染（加粗、斜体等）\n- 💻 代码块语法高亮\n- 📐 LaTeX 数学公式支持\n- 🌿 支持创建分支对话以探索不同思路",
+        thoughts: "用户刚刚打开了画布，我应该提供一条欢迎消息，介绍分支功能并展示 Markdown 功能。",
         timestamp: Date.now(),
     };
 
@@ -56,7 +56,7 @@ function createSessionWelcomeThread(): ThreadNode {
         messages: [welcomeMessage],
         parentId: null,
         parentMessageId: null,
-        title: "Main Thread",
+        title: "主会话",
         createdAt: Date.now(),
         updatedAt: Date.now(),
     };
@@ -72,7 +72,7 @@ export function createDefaultSession(title?: string): Session {
 
     return {
         id,
-        title: title || "New Conversation",
+        title: title || "新对话",
         createdAt: now,
         updatedAt: now,
         threads: new Map([[welcomeThread.id, welcomeThread]]),

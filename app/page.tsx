@@ -19,11 +19,10 @@ function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
           <Brain className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">
-          Welcome to DeepThink Canvas
+          欢迎使用 DeepThink 画布
         </h1>
         <p className="text-lg text-muted-foreground leading-relaxed">
-          Explore conversations as visual threads. Branch, explore, and visualize
-          Chain of Thought reasoning in a powerful canvas interface.
+          将对话可视化为分支线程。在强大的画布界面中探索思维链（Chain of Thought）推理。
         </p>
       </div>
 
@@ -34,9 +33,9 @@ function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
             <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-2">
               <MessageSquare className="w-5 h-5 text-blue-600" />
             </div>
-            <CardTitle className="text-lg">Thread Nodes</CardTitle>
+            <CardTitle className="text-lg">会话节点</CardTitle>
             <CardDescription>
-              Each node is a complete conversation. Click to activate and continue chatting.
+              每个节点都是一个完整的对话。点击激活并继续聊天。
             </CardDescription>
           </CardHeader>
         </Card>
@@ -46,9 +45,9 @@ function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
             <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center mb-2">
               <GitBranch className="w-5 h-5 text-purple-600" />
             </div>
-            <CardTitle className="text-lg">Branch & Explore</CardTitle>
+            <CardTitle className="text-lg">分支探索</CardTitle>
             <CardDescription>
-              Create branches from any AI response to explore alternative paths.
+              从任意 AI 回复创建分支，探索替代路径。
             </CardDescription>
           </CardHeader>
         </Card>
@@ -58,9 +57,9 @@ function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
             <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center mb-2">
               <Sparkles className="w-5 h-5 text-amber-600" />
             </div>
-            <CardTitle className="text-lg">R1 Thoughts</CardTitle>
+            <CardTitle className="text-lg">思维过程</CardTitle>
             <CardDescription>
-              See AI reasoning with expandable Chain of Thought blocks.
+              展开查看 AI 的思维链（Chain of Thought）推理过程。
             </CardDescription>
           </CardHeader>
         </Card>
@@ -73,7 +72,7 @@ function WelcomeView({ onStartCanvas }: { onStartCanvas: () => void }) {
         className="gap-2 shadow-lg shadow-primary/25"
       >
         <Sparkles className="w-4 h-4" />
-        Enter Canvas Mode
+        进入画布模式
         <ArrowRight className="w-4 h-4" />
       </Button>
     </div>
@@ -165,11 +164,11 @@ function ChatModeView() {
               )}
             </div>
             <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-              {activeThread?.title || "Main Thread"}
+              {activeThread?.title || "主会话"}
             </span>
             {activeThread?.parentId && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400">
-                Branch
+                分支
               </span>
             )}
           </div>
@@ -233,44 +232,23 @@ function ChatModeView() {
 }
 
 export default function Home() {
-  const { viewMode, setViewMode } = useViewMode();
-  const { threads } = useCanvas();
-  const [hasStarted, setHasStarted] = useState(false);
+  const { viewMode } = useViewMode();
   const [isHydrated, setIsHydrated] = useState(false);
-
-  // Check if we have any user messages (beyond the initial welcome)
-  const hasUserMessages = Array.from(threads.values()).some(
-    thread => thread.messages.some(m => m.role === "user")
-  );
 
   // Handle hydration - must check on client side only
   useEffect(() => {
     setIsHydrated(true);
-    // If user has messages, skip the welcome screen
-    if (hasUserMessages) {
-      setHasStarted(true);
-    }
-  }, [hasUserMessages]);
-
-  const handleStartCanvas = () => {
-    setHasStarted(true);
-    setViewMode("graph");
-  };
+  }, []);
 
   // During SSR or before hydration, show a loading state to prevent mismatch
   if (!isHydrated) {
     return (
       <div className="flex items-center justify-center min-h-full">
-        <div className="animate-pulse text-muted-foreground">Loading...</div>
+        <div className="animate-pulse text-muted-foreground">加载中...</div>
       </div>
     );
   }
 
-  // Show welcome view if user hasn't started yet
-  if (!hasStarted && !hasUserMessages) {
-    return <WelcomeView onStartCanvas={handleStartCanvas} />;
-  }
-
-  // Render based on view mode
+  // Render based on view mode - always show chat/canvas, no welcome screen
   return viewMode === "chat" ? <ChatModeView /> : <CanvasView />;
 }

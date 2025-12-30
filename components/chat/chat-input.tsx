@@ -15,7 +15,7 @@ interface ChatInputProps {
 export function ChatInput({
   onSend,
   disabled = false,
-  placeholder = "Type your message... (Enter to send, Shift+Enter for new line)",
+  placeholder = "请输入消息... (Enter 发送，Shift+Enter 换行)",
 }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);

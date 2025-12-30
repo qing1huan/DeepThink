@@ -117,29 +117,37 @@ export function ThreadColumn({
                     </div>
                 ))}
 
-                {/* Loading indicator - only show for active column */}
-                {isActive && isLoading && (
-                    <div className="flex gap-3 max-w-4xl mr-auto">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                            <Brain className="size-4 text-white animate-pulse" />
-                        </div>
-                        <div className="flex flex-col">
-                            <span className="text-xs font-medium text-slate-500 mb-1">
-                                DeepThink AI
-                            </span>
-                            <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800">
-                                <div className="flex items-center gap-2">
-                                    <div className="flex gap-1">
-                                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                                        <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                {/* Loading indicator - only show when waiting for AI to start responding */}
+                {/* Hide once an AI message is added to the array (even if empty/streaming) */}
+                {isActive && isLoading && (() => {
+                    const lastMessage = messages[messages.length - 1];
+                    const isAlreadyStreamingAI = lastMessage && lastMessage.role === "assistant";
+                    // Only show "Thinking..." if no AI message is being streamed yet
+                    if (isAlreadyStreamingAI) return null;
+
+                    return (
+                        <div className="flex gap-3 max-w-4xl mr-auto">
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                                <Brain className="size-4 text-white animate-pulse" />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-xs font-medium text-slate-500 mb-1">
+                                    DeepThink AI
+                                </span>
+                                <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-slate-100 dark:bg-slate-800">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex gap-1">
+                                            <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                                            <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                                            <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                                        </div>
+                                        <span className="text-sm text-slate-500">思考中...</span>
                                     </div>
-                                    <span className="text-sm text-slate-500">Thinking...</span>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 <div ref={messagesEndRef} />
             </div>

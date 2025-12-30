@@ -262,7 +262,7 @@ export function Sidebar() {
             )}
           >
             <Plus className="size-5" />
-            {!isCollapsed && <span className="truncate">New Canvas</span>}
+            {!isCollapsed && <span className="truncate">新建画布</span>}
           </Button>
         </div>
 
@@ -273,7 +273,7 @@ export function Sidebar() {
           <div className="mb-4">
             <div className="flex items-center justify-between px-2 mb-2">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                Sessions
+                会话列表
               </p>
               <span className="text-xs text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">
                 {sessions.length}
@@ -286,21 +286,39 @@ export function Sidebar() {
                   key={session.id}
                   onClick={() => handleSelectSession(session.id)}
                   className={cn(
-                    "group flex items-center gap-2 text-sm py-2 px-2 rounded cursor-pointer transition-colors",
+                    "group flex items-start gap-2 text-sm py-2.5 px-2 rounded cursor-pointer transition-colors",
                     "hover:bg-slate-800/40",
                     session.id === activeSessionId && "bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/25",
                     session.id !== activeSessionId && "text-slate-400"
                   )}
                 >
-                  <Brain className="size-3.5 flex-shrink-0" />
-                  <span className="truncate flex-1">{session.title}</span>
+                  <Brain className="size-3.5 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="truncate block font-medium">{session.title}</span>
+                    {/* Session preview - first user message */}
+                    {(() => {
+                      // Find first user message across all threads
+                      for (const thread of session.threads.values()) {
+                        const firstUserMsg = thread.messages.find(m => m.role === "user");
+                        if (firstUserMsg) {
+                          const preview = firstUserMsg.content.substring(0, 40);
+                          return (
+                            <span className="text-xs text-slate-500 truncate block mt-0.5">
+                              {preview}{firstUserMsg.content.length > 40 ? "..." : ""}
+                            </span>
+                          );
+                        }
+                      }
+                      return <span className="text-xs text-slate-600 block mt-0.5">新对话</span>;
+                    })()}
+                  </div>
 
                   {/* Delete button */}
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <button
                         onClick={(e) => e.stopPropagation()}
-                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 rounded transition-opacity flex-shrink-0"
                       >
                         <Trash2 className="size-3 text-red-400" />
                       </button>
@@ -338,7 +356,7 @@ export function Sidebar() {
           {!isCollapsed && (
             <div className="flex items-center justify-between px-2 mb-2">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                Threads
+                对话流
               </p>
               <span className="text-xs text-slate-600 bg-slate-800 px-1.5 py-0.5 rounded">
                 {threads.size}

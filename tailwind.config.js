@@ -16,6 +16,9 @@ module.exports = {
             },
         },
         extend: {
+            fontFamily: {
+                mono: ['var(--font-jetbrains-mono)', 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'monospace'],
+            },
             colors: {
                 border: "hsl(var(--border))",
                 input: "hsl(var(--input))",
@@ -80,7 +83,22 @@ module.exports = {
                 "accordion-down": "accordion-down 0.2s ease-out",
                 "accordion-up": "accordion-up 0.2s ease-out",
             },
+            typography: {
+                DEFAULT: {
+                    css: {
+                        // Prevent prose from styling pre/code - we handle it ourselves
+                        'pre': false,
+                        'code': false,
+                        'pre code': false,
+                        'code::before': false,
+                        'code::after': false,
+                    },
+                },
+            },
         },
     },
-    plugins: [require("tailwindcss-animate")],
+    plugins: [
+        require("tailwindcss-animate"),
+        require("@tailwindcss/typography"),
+    ],
 }

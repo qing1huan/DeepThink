@@ -54,7 +54,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
       onClick={handleNodeClick}
       onDoubleClick={handleDoubleClick}
       className={cn(
-        "w-[400px] rounded-xl overflow-hidden cursor-pointer",
+        "w-[360px] rounded-xl overflow-hidden cursor-pointer",
         "bg-white dark:bg-slate-900",
         "border-2 transition-all duration-200",
         "shadow-xl",
@@ -100,7 +100,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
                 "text-xs",
                 isActive ? "text-white/70" : "text-slate-500"
               )}>
-                {thread.messages.length} messages
+                {thread.messages.length} 条消息
               </p>
             </div>
           </div>
@@ -109,7 +109,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
             {isActive && (
               <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-white/20 text-white text-xs font-medium">
                 <Sparkles className="size-3" />
-                Active
+                活跃
               </span>
             )}
             <Button
@@ -128,7 +128,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
               title="Open in Chat Mode"
             >
               <ExternalLink className="size-3.5 mr-1" />
-              Chat
+              对话
             </Button>
           </div>
         </div>
@@ -139,7 +139,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
         ref={scrollContainerRef}
         onWheel={handleWheel}
         className={cn(
-          "max-h-[400px] overflow-y-auto p-3",
+          "max-h-[280px] overflow-y-auto p-3",
           "nopan nodrag", // React Flow classes to prevent pan/drag
           "scrollbar-thin"
         )}
@@ -150,7 +150,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
               <MessageSquare className="size-6 text-slate-400" />
             </div>
             <p className="text-sm text-slate-500">
-              {isActive ? "Start typing to begin..." : "Empty thread"}
+              {isActive ? "开始输入消息..." : "空会话"}
             </p>
           </div>
         ) : (
@@ -163,8 +163,8 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
                     "relative rounded-xl px-3 py-2",
                     "nodrag", // Allow text selection
                     message.role === "user"
-                      ? "bg-gradient-to-br from-blue-500 to-indigo-600 text-white ml-10"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 mr-10"
+                      ? "bg-gradient-to-br from-blue-500 to-indigo-600 text-white ml-6"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                   )}
                 >
                   {/* Role Label */}
@@ -174,7 +174,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
                       ? "text-white/70"
                       : "text-slate-500 dark:text-slate-400"
                   )}>
-                    {message.role === "user" ? "You" : "AI"}
+                    {message.role === "user" ? "你" : "AI"}
                   </p>
 
                   {/* Thought Process (collapsed in node view) */}
@@ -185,22 +185,21 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
                   )}
 
                   {/* Content - selectable text */}
-                  <p className="text-xs leading-relaxed line-clamp-6 select-text cursor-text">
+                  <p className="text-[11px] leading-relaxed line-clamp-8 select-text cursor-text">
                     {message.content}
                   </p>
                 </div>
 
-                {/* Branch Button - Only for assistant messages, visible on hover */}
+                {/* Branch Button - Always visible for assistant messages */}
                 {message.role === "assistant" && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={(e) => handleBranch(e, message.id)}
                     className={cn(
-                      "absolute right-0 top-1/2 -translate-y-1/2 translate-x-[calc(100%+8px)]",
-                      "opacity-0 group-hover:opacity-100",
+                      "absolute -right-1 top-3",
                       "transition-all duration-200",
-                      "h-8 w-8 p-0 rounded-full",
+                      "h-7 w-7 p-0 rounded-full",
                       "bg-gradient-to-br from-indigo-500 to-purple-600",
                       "hover:from-indigo-600 hover:to-purple-700",
                       "text-white",
@@ -208,9 +207,9 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
                       "hover:scale-110",
                       "nodrag nopan" // Prevent canvas interactions
                     )}
-                    title="Create branch from this point"
+                    title="从此处创建分支"
                   >
-                    <GitBranch className="size-4" />
+                    <GitBranch className="size-3.5" />
                   </Button>
                 )}
               </div>
@@ -223,7 +222,7 @@ function ThreadNodeComponent({ data, selected }: NodeProps<ThreadNodeData>) {
       {isActive && (
         <div className="px-4 py-2 bg-indigo-50 dark:bg-indigo-950/30 border-t border-indigo-100 dark:border-indigo-900 nodrag">
           <p className="text-xs text-indigo-600 dark:text-indigo-400 text-center">
-            ↓ Type below to continue this thread
+            ↓ 在下方输入以继续此对话
           </p>
         </div>
       )}
